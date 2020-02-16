@@ -117,6 +117,13 @@ static vpx_codec_err_t vp8_destroy(vpx_codec_alg_priv_t *ctx) {
   return VPX_CODEC_OK;
 }
 
+#ifdef __clang_analyzer__
+static vpx_codec_err_t vp8_peek_si_internal(const uint8_t *data,
+                                            unsigned int data_sz,
+                                            vpx_codec_stream_info_t *si,
+                                            vpx_decrypt_cb decrypt_cb,
+                                            void *decrypt_state) __attribute__((nonnull(1)));
+#endif
 static vpx_codec_err_t vp8_peek_si_internal(const uint8_t *data,
                                             unsigned int data_sz,
                                             vpx_codec_stream_info_t *si,
@@ -267,7 +274,7 @@ static int update_fragments(vpx_codec_alg_priv_t *ctx, const uint8_t *data,
 static vpx_codec_err_t vp8_decode(vpx_codec_alg_priv_t *ctx,
                                   const uint8_t *data, unsigned int data_sz,
                                   void *user_priv, long deadline) {
-  volatile vpx_codec_err_t res;
+  volatile vpx_codec_err_t res = VPX_CODEC_INVALID_PARAM;
   unsigned int resolution_change = 0;
   unsigned int w, h;
 
@@ -285,8 +292,10 @@ static vpx_codec_err_t vp8_decode(vpx_codec_alg_priv_t *ctx,
   w = ctx->si.w;
   h = ctx->si.h;
 
-  res = vp8_peek_si_internal(ctx->fragments.ptrs[0], ctx->fragments.sizes[0],
+  if (ctx->fragments.ptrs[0]) {
+      res = vp8_peek_si_internal(ctx->fragments.ptrs[0], ctx->fragments.sizes[0],
                              &ctx->si, ctx->decrypt_cb, ctx->decrypt_state);
+  }
 
   if ((res == VPX_CODEC_UNSUP_BITSTREAM) && !ctx->si.is_kf) {
     /* the peek function returns an error for non keyframes, however for
