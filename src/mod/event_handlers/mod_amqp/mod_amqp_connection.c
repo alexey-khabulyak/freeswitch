@@ -56,6 +56,30 @@ void mod_amqp_connection_close(mod_amqp_connection_t *connection)
 	}
 }
 
+void mod_amqp_aux_connection_close(mod_amqp_aux_connection_t *connection)
+{
+	amqp_connection_state_t old_state = connection->state;
+	int status = 0;
+
+	connection->state = NULL;
+
+        if (connection->queueName.bytes) {
+             amqp_bytes_free(connection->queueName);
+	     connection->queueName.bytes = NULL;
+        }
+
+
+	if (old_state != NULL) {
+		mod_amqp_log_if_amqp_error(amqp_channel_close(old_state, 1, AMQP_REPLY_SUCCESS), "Closing channel");
+		mod_amqp_log_if_amqp_error(amqp_connection_close(old_state, AMQP_REPLY_SUCCESS), "Closing connection");
+
+		if ((status = amqp_destroy_connection(old_state))) {
+			const char *errstr = amqp_error_string2(-status);
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "Error destroying amqp connection: %s\n", errstr);
+		}
+	}
+}
+
 switch_status_t mod_amqp_connection_open(mod_amqp_connection_t *connections, mod_amqp_connection_t **active, char *profile_name, char *custom_attr)
 {
 	int channel_max = 0;
@@ -192,6 +216,138 @@ err:
     return SWITCH_STATUS_GENERR;
 }
 
+switch_status_t mod_amqp_aux_connection_open(mod_amqp_connection_t *base_conn, mod_amqp_aux_connection_t **aux_conn, char *profile_name, char *custom_attr, char *reply_exchange)
+{
+        int channel_max = 0;
+        int frame_max = 131072;
+        amqp_table_t loginProperties;
+        amqp_table_entry_t loginTableEntries[5];
+        char hostname[64];
+        int bHasHostname;
+        char key_string[256] = {0};
+        amqp_rpc_reply_t status;
+        amqp_socket_t *socket = NULL;
+        int amqp_status = -1;
+	amqp_queue_declare_ok_t *recv_queue;
+	amqp_bytes_t queueName = { 0, NULL };
+	switch_uuid_t uuid;
+
+        amqp_connection_state_t newConnection = amqp_new_connection();
+
+
+        /* Set up meta data for connection */
+        bHasHostname = gethostname(hostname, sizeof(hostname)) == 0;
+
+        loginProperties.num_entries = sizeof(loginTableEntries)/sizeof(*loginTableEntries);
+        loginProperties.entries = loginTableEntries;
+
+        snprintf(key_string, 256, "x_%s_HostMachineName", custom_attr);
+        loginTableEntries[0].key = amqp_cstring_bytes(key_string);
+        loginTableEntries[0].value.kind = AMQP_FIELD_KIND_BYTES;
+        loginTableEntries[0].value.value.bytes = amqp_cstring_bytes(bHasHostname ? hostname : "(unknown)");
+
+        snprintf(key_string, 256, "x_%s_ProcessDescription", custom_attr);
+        loginTableEntries[1].key = amqp_cstring_bytes(key_string);
+        loginTableEntries[1].value.kind = AMQP_FIELD_KIND_BYTES;
+        loginTableEntries[1].value.value.bytes = amqp_cstring_bytes("FreeSwitch");
+
+        snprintf(key_string, 256, "x_%s_ProcessType", custom_attr);
+        loginTableEntries[2].key = amqp_cstring_bytes(key_string);
+        loginTableEntries[2].value.kind = AMQP_FIELD_KIND_BYTES;
+        loginTableEntries[2].value.value.bytes = amqp_cstring_bytes("TAP");
+
+        snprintf(key_string, 256, "x_%s_ProcessBuildVersion", custom_attr);
+        loginTableEntries[3].key = amqp_cstring_bytes(key_string);
+        loginTableEntries[3].value.kind = AMQP_FIELD_KIND_BYTES;
+        loginTableEntries[3].value.value.bytes = amqp_cstring_bytes(switch_version_full());
+
+        snprintf(key_string, 256, "x_%s_Liquid_ProcessBuildBornOn", custom_attr);
+        loginTableEntries[4].key = amqp_cstring_bytes(key_string);
+        loginTableEntries[4].value.kind = AMQP_FIELD_KIND_BYTES;
+        loginTableEntries[4].value.value.bytes = amqp_cstring_bytes(__DATE__ " " __TIME__);
+
+        if (!(socket = amqp_tcp_socket_new(newConnection))) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "Could not create TCP socket\n");
+                goto err;
+        }
+
+        amqp_status = -1;
+        switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG, "Trying to add additional connect to AMQP %s:%d\n",
+                                                  base_conn->hostname, base_conn->port);
+
+        if ((amqp_status = amqp_socket_open(socket, base_conn->hostname, base_conn->port))){
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not open socket connection to AMQP broker %s:%d status(%d) %s\n",
+                                                    base_conn->hostname, base_conn->port,       amqp_status, amqp_error_string2(amqp_status));
+                goto err;
+        }
+
+        switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG, "Profile[%s] opened socket connection to AMQP broker %s:%d\n",
+                                          profile_name, base_conn->hostname, base_conn->port);
+
+        /* We have a connection, now log in */
+        status = amqp_login_with_properties(newConnection,
+                                            base_conn->virtualhost,
+                                            channel_max,
+                                            frame_max,
+                                            base_conn->heartbeat,
+                                            &loginProperties,
+                                            AMQP_SASL_METHOD_PLAIN,
+                                            base_conn->username,
+                                            base_conn->password);
+
+        if (mod_amqp_log_if_amqp_error(status, "Logging in")) {
+                if (aux_conn) {
+                        mod_amqp_aux_connection_close(*aux_conn);
+                        *aux_conn = NULL;
+                }
+                goto err;
+        }
+
+        // Open a channel (1). This is fairly standard
+        amqp_channel_open(newConnection, 1);
+        if (mod_amqp_log_if_amqp_error(amqp_get_rpc_reply(newConnection), "Opening channel")) {
+                if (aux_conn) {
+                        mod_amqp_aux_connection_close(*aux_conn);
+                        *aux_conn = NULL;
+                }
+                goto err;
+        }
+
+        if (aux_conn) {
+                (*aux_conn)->state = newConnection;
+                (*aux_conn)->locked = 0;
+	        switch_uuid_get(&uuid);
+	        switch_uuid_format((*aux_conn)->uuid, &uuid);
+
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "QUEUE UUID: %s\n", (*aux_conn)->uuid);
+		recv_queue = amqp_queue_declare(newConnection, // state
+						1,                           // channel
+						amqp_cstring_bytes((*aux_conn)->uuid), // queue name
+						0, /* passive */
+						0, /* durable */
+						1, /* exclusive */
+						1, /* auto-delete */
+						amqp_empty_table);           // args
+		queueName = amqp_bytes_malloc_dup(recv_queue->queue);
+		(*aux_conn)->queueName = queueName;
+		amqp_queue_bind(newConnection,                   // state
+	        		1,                                             // channel
+				queueName,                                     // queue
+				amqp_cstring_bytes(reply_exchange),         // exchange
+				amqp_cstring_bytes((*aux_conn)->uuid),      // routing key
+				amqp_empty_table);                 // args
+        }
+
+
+        return SWITCH_STATUS_SUCCESS;
+
+err:
+    if (newConnection) {
+        amqp_destroy_connection(newConnection);
+    }
+    return SWITCH_STATUS_GENERR;
+}
+
 switch_status_t mod_amqp_connection_create(mod_amqp_connection_t **conn, switch_xml_t cfg, switch_memory_pool_t *pool)
 {
 	mod_amqp_connection_t *new_con = switch_core_alloc(pool, sizeof(mod_amqp_connection_t));
@@ -270,6 +426,15 @@ void mod_amqp_connection_destroy(mod_amqp_connection_t **conn)
 		*conn = NULL;
 	}
 }
+
+void mod_amqp_aux_connection_destroy(mod_amqp_aux_connection_t **conn)
+{
+	if (conn && *conn) {
+		mod_amqp_aux_connection_close(*conn);
+		*conn = NULL;
+	}
+}
+
 
 /* For Emacs:
  * Local Variables:
