@@ -73,6 +73,8 @@ typedef struct mod_amqp_aux_connection_s {
   char uuid[SWITCH_UUID_FORMATTED_LENGTH + 1];
   amqp_bytes_t queueName;
   unsigned int locked;
+  amqp_boolean_t ssl_on;
+  amqp_boolean_t ssl_verify_peer;
   amqp_connection_state_t state;
 
   struct mod_amqp_aux_connection_s *next;
