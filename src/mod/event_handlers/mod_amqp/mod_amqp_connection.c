@@ -263,9 +263,11 @@ switch_status_t mod_amqp_aux_connection_open(mod_amqp_connection_t *base_conn, m
 			goto err;
 		}
 		amqp_ssl_socket_set_verify_peer(socket, base_conn->ssl_verify_peer);
-	} else (!(socket = amqp_tcp_socket_new(newConnection))) {
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "Could not create TCP socket\n");
-		goto err;
+	} else { 
+		if (!(socket = amqp_tcp_socket_new(newConnection))) {
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "Could not create TCP socket\n");
+			goto err;
+		}
 	}
 
 	amqp_status = -1;
