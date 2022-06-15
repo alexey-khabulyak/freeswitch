@@ -316,10 +316,9 @@ switch_status_t mod_amqp_aux_connection_open(mod_amqp_connection_t *base_conn, m
         if (aux_conn) {
                 (*aux_conn)->state = newConnection;
                 (*aux_conn)->locked = 0;
-	        switch_uuid_get(&uuid);
-	        switch_uuid_format((*aux_conn)->uuid, &uuid);
+                switch_uuid_get(&uuid);
+                switch_uuid_format((*aux_conn)->uuid, &uuid);
 
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CRIT, "QUEUE UUID: %s\n", (*aux_conn)->uuid);
 		recv_queue = amqp_queue_declare(newConnection, // state
 						1,                           // channel
 						amqp_cstring_bytes((*aux_conn)->uuid), // queue name
