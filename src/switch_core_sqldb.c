@@ -3606,8 +3606,8 @@ switch_status_t switch_core_sqldb_start(switch_memory_pool_t *pool, switch_bool_
 
 	switch_event_reserve_subclass(SWITCH_RECOVERY_EVENT);
 	switch_event_reserve_subclass(SWITCH_RECOVERY_UNTRACK_EVENT);
-	switch_event_reserve_subclass(SWITCH_RECOVERY_INSERT_EXTERNAL_EVENT);
-	switch_event_bind("core_db", SWITCH_EVENT_CUSTOM, SWITCH_RECOVERY_INSERT_EXTERNAL_EVENT, ext_recovery_event_handler, NULL);
+	switch_event_reserve_subclass(SWITCH_RECOVERY_EXTERNAL_EVENT);
+	switch_event_bind("core_db", SWITCH_EVENT_CUSTOM, SWITCH_RECOVERY_EXTERNAL_EVENT, ext_recovery_event_handler, NULL);
 
 	if (!sql_manager.manage) goto skip;
 

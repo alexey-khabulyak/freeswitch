@@ -71,7 +71,7 @@ def send_recovery_event(sock, technology, xml_cdr):
     body = xml_cdr.encode('utf-8')
     cmd = (
         f'sendevent CUSTOM\n'
-        f'Event-Subclass: recovery::insert_external\n'
+        f'Event-Subclass: recovery::external\n'
         f'Recovery-Technology: {technology}\n'
         f'Content-Type: text/plain\n'
         f'Content-Length: {len(body)}\n'
