@@ -3407,6 +3407,15 @@ SWITCH_DECLARE(void) switch_core_recovery_untrack(switch_core_session_t *session
 
 		switch_sql_queue_manager_push(sql_manager.qm, sql, 3, SWITCH_FALSE);
 
+		{
+			switch_event_t *event;
+			if (switch_event_create_subclass(&event, SWITCH_EVENT_CUSTOM, SWITCH_RECOVERY_UNTRACK_EVENT) == SWITCH_STATUS_SUCCESS) {
+				switch_channel_event_set_data(channel, event);
+				switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Recovery-Force", force ? "true" : "false");
+				switch_event_fire(&event);
+			}
+		}
+
 		switch_channel_clear_flag(channel, CF_TRACKED);
 	}
 
@@ -3452,6 +3461,19 @@ SWITCH_DECLARE(void) switch_core_recovery_track(switch_core_session_t *session)
 		}
 
 		switch_sql_queue_manager_push(sql_manager.qm, sql, 2, SWITCH_FALSE);
+
+		{
+			switch_event_t *event;
+			if (switch_event_create_subclass(&event, SWITCH_EVENT_CUSTOM, SWITCH_RECOVERY_EVENT) == SWITCH_STATUS_SUCCESS) {
+				switch_channel_event_set_data(channel, event);
+				switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Recovery-Action",
+					switch_channel_test_flag(channel, CF_TRACKED) ? "update" : "insert");
+				switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Recovery-Technology", switch_str_nil(technology));
+				switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Recovery-Profile", switch_str_nil(profile_name));
+				switch_event_add_body(event, "%s", xml_cdr_text);
+				switch_event_fire(&event);
+			}
+		}
 
 		switch_safe_free(xml_cdr_text);
 		switch_channel_set_flag(channel, CF_TRACKED);
@@ -3571,6 +3593,9 @@ switch_status_t switch_core_sqldb_start(switch_memory_pool_t *pool, switch_bool_
 
 	switch_mutex_init(&sql_manager.dbh_mutex, SWITCH_MUTEX_NESTED, sql_manager.memory_pool);
 	switch_mutex_init(&sql_manager.ctl_mutex, SWITCH_MUTEX_NESTED, sql_manager.memory_pool);
+
+	switch_event_reserve_subclass(SWITCH_RECOVERY_EVENT);
+	switch_event_reserve_subclass(SWITCH_RECOVERY_UNTRACK_EVENT);
 
 	if (!sql_manager.manage) goto skip;
 
