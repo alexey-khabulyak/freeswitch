@@ -72,6 +72,7 @@ static struct {
 	int paused;
 } sql_manager;
 
+static void ext_recovery_event_handler(switch_event_t *event);
 
 static void switch_core_sqldb_start_thread(void);
 static void switch_core_sqldb_stop_thread(void);
@@ -3165,26 +3166,20 @@ SWITCH_DECLARE(void) switch_core_recovery_flush(const char *technology, const ch
 }
 
 
-static int recover_callback(void *pArg, int argc, char **argv, char **columnNames)
+static int recover_session_from_xml(const char *technology, const char *xml_cdr_str, int *rp)
 {
-	int *rp = (int *) pArg;
 	switch_xml_t xml;
 	switch_endpoint_interface_t *ep;
 	switch_core_session_t *session;
 
-	if (argc < 4) {
-		return 0;
-	}
-
-	if (!(xml = switch_xml_parse_str_dynamic(argv[4], SWITCH_TRUE))) {
+	if (!(xml = switch_xml_parse_str_dynamic((char *) xml_cdr_str, SWITCH_TRUE))) {
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "XML ERROR\n");
 		return 0;
 	}
 
-	if (!(ep = switch_loadable_module_get_endpoint_interface(argv[0]))) {
+	if (!(ep = switch_loadable_module_get_endpoint_interface(technology))) {
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "EP ERROR\n");
 		switch_xml_free(xml);
-
 		return 0;
 	}
 
@@ -3203,7 +3198,6 @@ static int recover_callback(void *pArg, int argc, char **argv, char **columnName
 
 			switch_channel_set_flag(session->channel, CF_RECOVERING);
 
-
 			if (switch_channel_get_partner_uuid(channel)) {
 				switch_channel_set_flag(channel, CF_RECOVERING_BRIDGE);
 			}
@@ -3217,12 +3211,9 @@ static int recover_callback(void *pArg, int argc, char **argv, char **columnName
 					r = recover_callback(session);
 				}
 			}
-
-
 		}
 
 		if (r > 0) {
-
 			if (!switch_channel_test_flag(channel, CF_RECOVERING_BRIDGE)) {
 				switch_xml_t callflow, param, x_extension;
 				if ((extension = switch_caller_extension_new(session, "recovery", "recovery")) == 0) {
@@ -3234,7 +3225,6 @@ static int recover_callback(void *pArg, int argc, char **argv, char **columnName
 					for (param = switch_xml_child(x_extension, "application"); param; param = param->next) {
 						const char *var = switch_xml_attr_soft(param, "app_name");
 						const char *val = switch_xml_attr_soft(param, "app_data");
-						/* skip announcement type apps */
 						if (!recovery_skip_announcement_type_applications || (strcasecmp(var, "speak") && strcasecmp(var, "playback") && strcasecmp(var, "gentones") && strcasecmp(var, "say"))) {
 							switch_caller_extension_add_application(session, extension, var, val);
 						}
@@ -3249,22 +3239,28 @@ static int recover_callback(void *pArg, int argc, char **argv, char **columnName
 							  "Resurrecting fallen channel %s\n", switch_channel_get_name(channel));
 			switch_core_session_thread_launch(session);
 
-			*rp = (*rp) + 1;
-
+			if (rp) *rp = (*rp) + 1;
 		}
 
 	} else {
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Endpoint %s has no recovery function\n", argv[0]);
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Endpoint %s has no recovery function\n", technology);
 	}
-
 
  end:
 
 	UNPROTECT_INTERFACE(ep);
-
 	switch_xml_free(xml);
 
 	return 0;
+}
+
+static int recover_callback(void *pArg, int argc, char **argv, char **columnNames)
+{
+	if (argc < 5) {
+		return 0;
+	}
+
+	return recover_session_from_xml(argv[0], argv[4], (int *) pArg);
 }
 
 SWITCH_DECLARE(int) switch_core_recovery_recover(const char *technology, const char *profile_name)
@@ -3372,6 +3368,20 @@ SWITCH_DECLARE(void) switch_core_sql_exec(const char *sql)
 
 
 	switch_sql_queue_manager_push(sql_manager.qm, sql, 3, SWITCH_TRUE);
+}
+
+static void ext_recovery_event_handler(switch_event_t *event)
+{
+	const char *technology = switch_event_get_header(event, "Recovery-Technology");
+	const char *xml_cdr    = switch_event_get_body(event);
+
+	if (zstr(technology) || zstr(xml_cdr)) {
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING,
+						  "External recovery event missing required headers, ignoring\n");
+		return;
+	}
+
+	recover_session_from_xml(technology, xml_cdr, NULL);
 }
 
 SWITCH_DECLARE(void) switch_core_recovery_untrack(switch_core_session_t *session, switch_bool_t force)
@@ -3596,6 +3606,8 @@ switch_status_t switch_core_sqldb_start(switch_memory_pool_t *pool, switch_bool_
 
 	switch_event_reserve_subclass(SWITCH_RECOVERY_EVENT);
 	switch_event_reserve_subclass(SWITCH_RECOVERY_UNTRACK_EVENT);
+	switch_event_reserve_subclass(SWITCH_RECOVERY_INSERT_EXTERNAL_EVENT);
+	switch_event_bind("core_db", SWITCH_EVENT_CUSTOM, SWITCH_RECOVERY_INSERT_EXTERNAL_EVENT, ext_recovery_event_handler, NULL);
 
 	if (!sql_manager.manage) goto skip;
 
