@@ -231,7 +231,7 @@ static void recover_event_handler(switch_event_t *event)
 		if ((r = ep->recover_callback(session)) > 0) {
 			const char *cbname;
 
-			switch_channel_set_flag(session->channel, CF_RECOVERING);
+			switch_channel_set_flag(channel, CF_RECOVERING);
 
 			if (switch_channel_get_partner_uuid(channel)) {
 				switch_channel_set_flag(channel, CF_RECOVERING_BRIDGE);
