@@ -14101,14 +14101,10 @@ SWITCH_DECLARE (void) switch_core_media_recover_session(switch_core_session_t *s
 	a_engine->adv_sdp_port = a_engine->local_sdp_port = (switch_port_t)atoi(port);
 	a_engine->codec_negotiated = 1;
 
-	if (!runtime.recovery_renegotiate_media) {
-		a_engine->adv_sdp_ip = smh->mparams->extrtpip = (char *) ip;
-		if (!zstr(ip)) {
-			a_engine->local_sdp_ip = switch_core_session_strdup(session, ip);
-			smh->mparams->rtpip = a_engine->local_sdp_ip;
-		}
-	} else {
-		a_engine->adv_sdp_ip = (char *) ip;
+	a_engine->adv_sdp_ip = smh->mparams->extrtpip = (char *) ip;
+	if (!zstr(ip)) {
+		a_engine->local_sdp_ip = switch_core_session_strdup(session, ip);
+		smh->mparams->rtpip = a_engine->local_sdp_ip;
 	}
 
 	if (!zstr(a_ip)) {
@@ -14120,9 +14116,6 @@ SWITCH_DECLARE (void) switch_core_media_recover_session(switch_core_session_t *s
 		a_engine->cur_payload_map->remote_sdp_port = (switch_port_t)atoi(r_port);
 	}
 
-	if (runtime.recovery_renegotiate_media) {
-		switch_core_media_choose_port(session, SWITCH_MEDIA_TYPE_AUDIO, 1);
-	}
 
 	if (switch_channel_test_flag(session->channel, CF_VIDEO)) {
 		if ((tmp = switch_channel_get_variable(session->channel, "rtp_use_video_pt"))) {
@@ -14160,9 +14153,6 @@ SWITCH_DECLARE (void) switch_core_media_recover_session(switch_core_session_t *s
 			v_engine->cur_payload_map->remote_sdp_port = (switch_port_t)atoi(r_port);
 		}
 
-		if (runtime.recovery_renegotiate_media) {
-			switch_core_media_choose_port(session, SWITCH_MEDIA_TYPE_VIDEO, 1);
-		}
 	}
 
 	switch_core_media_gen_local_sdp(session, SDP_OFFER, NULL, 0, NULL, 1);
