@@ -383,6 +383,7 @@ SWITCH_MODULE_LOAD_FUNCTION(mod_ha_load)
 	switch_event_bind(modname, SWITCH_EVENT_CHANNEL_ANSWER,   SWITCH_EVENT_SUBCLASS_ANY, track_event_handler,   NULL);
 	switch_event_bind(modname, SWITCH_EVENT_CHANNEL_BRIDGE,   SWITCH_EVENT_SUBCLASS_ANY, track_event_handler,   NULL);
 	switch_event_bind(modname, SWITCH_EVENT_CHANNEL_UNBRIDGE, SWITCH_EVENT_SUBCLASS_ANY, track_event_handler,   NULL);
+	switch_event_bind(modname, SWITCH_EVENT_CODEC,            SWITCH_EVENT_SUBCLASS_ANY, track_event_handler,   NULL);
 	switch_event_bind(modname, SWITCH_EVENT_CHANNEL_HANGUP,   SWITCH_EVENT_SUBCLASS_ANY, untrack_event_handler, NULL);
 	switch_event_bind(modname, SWITCH_EVENT_CHANNEL_DESTROY,  SWITCH_EVENT_SUBCLASS_ANY, destroy_event_handler, NULL);
 	switch_event_bind(modname, SWITCH_EVENT_CUSTOM, HA_RECOVER_EVENT, recover_event_handler, NULL);
