@@ -1814,6 +1814,8 @@ SWITCH_DECLARE(switch_status_t) switch_core_init(switch_core_flag_t flags, switc
 	runtime.max_db_handles = 50;
 	runtime.db_handle_timeout = 5000000;
 	runtime.event_heartbeat_interval = 20;
+	runtime.recovery_use_db = SWITCH_TRUE;
+	runtime.recovery_fire_events = SWITCH_FALSE;
 
 	runtime.runlevel++;
 	runtime.dummy_cng_frame.data = runtime.dummy_data;
@@ -2383,6 +2385,24 @@ static void switch_load_core_config(const char *file)
 					switch_core_max_audio_channels(atoi(val));
 				} else if (!strcasecmp(var, "recovery-renegotiate-media") && !zstr(val)) {
 					runtime.recovery_renegotiate_media = switch_true(val) ? SWITCH_TRUE : SWITCH_FALSE;
+				} else if (!strcasecmp(var, "recovery-fire-events") && !zstr(val)) {
+					runtime.recovery_fire_events = switch_true(val) ? SWITCH_TRUE : SWITCH_FALSE;
+				} else if (!strcasecmp(var, "recovery-use-db") && !zstr(val)) {
+					runtime.recovery_use_db = switch_true(val) ? SWITCH_TRUE : SWITCH_FALSE;
+				} else if (!strcasecmp(var, "recovery-queue-size") && !zstr(val)) {
+					int tmp = atoi(val);
+					if (tmp > 0) {
+						runtime.recovery_queue_size = tmp;
+					} else {
+						switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid recovery-queue-size [%s], using the default\n", val);
+					}
+				} else if (!strcasecmp(var, "recovery-worker-threads") && !zstr(val)) {
+					int tmp = atoi(val);
+					if (tmp > 0) {
+						runtime.recovery_worker_threads = tmp;
+					} else {
+						switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid recovery-worker-threads [%s], using the default\n", val);
+					}
 				}
 			}
 		}
@@ -2440,6 +2460,8 @@ switch_status_t switch_core_sqldb_init(const char **err)
 		*err = "Error activating database";
 		return SWITCH_STATUS_GENERR;
 	}
+
+	switch_core_recovery_init();
 
 	return SWITCH_STATUS_SUCCESS;
 }
@@ -3039,6 +3061,9 @@ SWITCH_DECLARE(switch_status_t) switch_core_destroy(void)
 
 	switch_set_flag((&runtime), SCF_NO_NEW_SESSIONS);
 	switch_set_flag((&runtime), SCF_SHUTTING_DOWN);
+
+	/* stop recovering channels before the endpoints they belong to are unloaded */
+	switch_core_recovery_shutdown();
 
 	switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_CONSOLE, "End existing sessions\n");
 	switch_core_session_hupall(runtime.shutdown_cause);

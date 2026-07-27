@@ -289,6 +289,10 @@ struct switch_runtime {
 	switch_call_cause_t shutdown_cause;
 	uint32_t uuid_version;
 	switch_bool_t recovery_renegotiate_media;
+	switch_bool_t recovery_fire_events;
+	switch_bool_t recovery_use_db;
+	uint32_t recovery_queue_size;
+	uint32_t recovery_worker_threads;
 };
 
 extern struct switch_runtime runtime;
@@ -315,6 +319,9 @@ switch_status_t switch_core_sqldb_init(const char **err);
 void switch_core_sqldb_destroy(void);
 switch_status_t switch_core_sqldb_start(switch_memory_pool_t *pool, switch_bool_t manage);
 void switch_core_sqldb_stop(void);
+switch_sql_queue_manager_t *switch_core_sqldb_qm(void);
+void switch_core_recovery_init(void);
+void switch_core_recovery_shutdown(void);
 void switch_core_session_init(switch_memory_pool_t *pool);
 void switch_core_session_uninit(void);
 void switch_core_state_machine_init(switch_memory_pool_t *pool);

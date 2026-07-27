@@ -343,6 +343,7 @@ if not exist "$(OutDir)fonts" xcopy "$(SolutionDir)fonts\*.*" "$(OutDir)fonts\" 
     </ClCompile>
     <ClCompile Include="..\..\src\switch_core_speech.c" />
     <ClCompile Include="..\..\src\switch_core_sqldb.c" />
+    <ClCompile Include="..\..\src\switch_core_recovery.c" />
     <ClCompile Include="..\..\src\switch_core_state_machine.c" />
     <ClCompile Include="..\..\src\switch_core_timer.c" />
     <ClCompile Include="..\..\src\switch_cpp.cpp">

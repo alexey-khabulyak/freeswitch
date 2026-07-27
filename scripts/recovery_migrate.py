@@ -3,6 +3,9 @@
 Reads recovery records from a FreeSWITCH SQLite DB and sends them
 to another FreeSWITCH instance via ESL for call restoration.
 
+The destination instance recovers the channels itself: its core listens for the
+recovery::external events sent below.
+
 Usage:
     python3 recovery_migrate.py [options]
 

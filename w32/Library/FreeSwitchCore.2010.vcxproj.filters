@@ -103,6 +103,9 @@
     <ClCompile Include="..\..\src\switch_core_sqldb.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\switch_core_recovery.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\switch_limit.c">
       <Filter>Source Files</Filter>
     </ClCompile>
